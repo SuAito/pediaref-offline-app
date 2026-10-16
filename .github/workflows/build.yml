@@ -1,0 +1,58 @@
+name: Build PediaRef Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract original project
+        run: |
+          unzip -q grok-workspace.zip -d project
+          cd project
+          if [ ! -f package.json ]; then
+            echo "ERROR: package.json not found"
+            exit 1
+          fi
+          echo "Project extracted successfully"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: project/package-lock.json
+
+      - name: Install dependencies
+        working-directory: project
+        run: |
+          npm install --no-audit --no-fund
+
+      - name: Build application
+        working-directory: project
+        run: |
+          npm run build:dev
+
+      - name: Save build output for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PediaRef-Build-Output
+          path: |
+            project/dist/
+            project/.output/
+            project/.vercel/output/
+          if-no-files-found: warn
+          retention-days: 7
