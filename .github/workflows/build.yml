@@ -1,4 +1,4 @@
-name: Build PediaRef Android APK
+name: Build PediaRef Offline APK
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -20,39 +20,223 @@ jobs:
 
       - name: Extract original project
         run: |
+          mkdir -p project
           unzip -q grok-workspace.zip -d project
-          cd project
-          if [ ! -f package.json ]; then
+
+          test -f project/package.json || {
             echo "ERROR: package.json not found"
             exit 1
-          fi
-          echo "Project extracted successfully"
+          }
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: project/package-lock.json
 
-      - name: Install dependencies
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Create offline application entry
         working-directory: project
         run: |
-          npm install --no-audit --no-fund
+          cat > index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta
+                name="viewport"
+                content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+              />
+              <meta name="theme-color" content="#f4f1ea" />
+              <title>PediaRef</title>
+            </head>
+            <body>
+              <div id="root"></div>
+              <script type="module" src="/offline-main.tsx"></script>
+            </body>
+          </html>
+          EOF
 
-      - name: Build application
+          cat > offline-main.tsx <<'EOF'
+          import { useEffect, useState } from "react";
+          import { createRoot } from "react-dom/client";
+          import { DosePanel } from "./src/components/dose-panel";
+          import { FluidsPanel } from "./src/components/fluids-panel";
+          import { GrowthPanel } from "./src/components/growth-panel";
+          import { LogPanel } from "./src/components/log-panel";
+          import { PatientCards, PatientPanel } from "./src/components/patient-panel";
+          import { usePatient } from "./src/lib/patient-store";
+          import { cn } from "./src/lib/utils";
+          import "./src/styles.css";
+
+          const TABS = [
+            { id: "patient", label: "Patient" },
+            { id: "growth", label: "Growth" },
+            { id: "doses", label: "Doses" },
+            { id: "fluids", label: "Fluids" },
+            { id: "log", label: "Log" },
+          ] as const;
+
+          type TabId = (typeof TABS)[number]["id"];
+
+          function OfflineApp() {
+            const [tab, setTab] = useState<TabId>("doses");
+            const [showCase, setShowCase] = useState(false);
+            const logCount = usePatient((s) => s.log.length);
+
+            useEffect(() => {
+              void usePatient.persist.rehydrate();
+            }, []);
+
+            return (
+              <div className="min-h-dvh">
+                <header className="sticky top-0 z-30 border-b border-border bg-bg/90">
+                  <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+                    <div className="flex items-center gap-2.5 text-fg">
+                      <span className="flex size-8 items-center justify-center rounded-sm bg-accent text-accent-fg">
+                        <svg viewBox="0 0 24 24" className="size-4" fill="none" aria-hidden="true">
+                          <path d="M4 16c2-6 4-9 8-9s6 3 8 9" stroke="currentColor" strokeWidth="1.75" />
+                          <circle cx="12" cy="7" r="1.4" fill="currentColor" />
+                        </svg>
+                      </span>
+                      <span className="font-display text-lg">PediaRef</span>
+                    </div>
+                    <span className="text-xs text-muted">Offline reference</span>
+                  </div>
+                </header>
+
+                <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+                  <section className="max-w-3xl">
+                    <p className="text-xs uppercase tracking-mark text-accent">Pediatric reference</p>
+                    <h1 className="mt-2 font-display text-4xl leading-tight tracking-tight sm:text-5xl">
+                      Weight in. Dose out.
+                    </h1>
+                    <p className="mt-3 max-w-xl text-muted">
+                      Age-smart mg/kg, WHO weight-for-age, Holliday–Segar fluids, and pump rates — a bedside calculator rebuilt for the ward, not a prescription.
+                    </p>
+                  </section>
+
+                  <div className="mt-8 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+                    <div className="min-w-0 lg:sticky lg:top-20 lg:self-start">
+                      <button
+                        type="button"
+                        className="mb-3 flex h-11 w-full items-center justify-between rounded-md bg-surface px-4 text-sm shadow-border lg:hidden"
+                        onClick={() => setShowCase((v) => !v)}
+                        aria-expanded={showCase}
+                      >
+                        <span>Patient console</span>
+                        <span className="text-muted">{showCase ? "Hide" : "Edit"}</span>
+                      </button>
+                      <div className={cn(showCase ? "block" : "hidden", "lg:block")}>
+                        <PatientPanel />
+                      </div>
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex gap-1.5 overflow-x-auto pb-2">
+                        {TABS.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => setTab(t.id)}
+                            className={cn(
+                              "h-11 shrink-0 rounded-full px-4 text-sm transition-[background-color,color] duration-150",
+                              tab === t.id
+                                ? "bg-fg text-bg"
+                                : "bg-surface text-muted shadow-border hover:text-fg",
+                            )}
+                          >
+                            {t.label}
+                            {t.id === "log" && logCount > 0 ? (
+                              <span className="ml-1.5 font-mono text-xs tabular-nums">{logCount}</span>
+                            ) : null}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mt-5">
+                        {tab === "patient" ? (
+                          <div className="space-y-4">
+                            <h2 className="font-display text-3xl tracking-tight">Case snapshot</h2>
+                            <PatientCards />
+                          </div>
+                        ) : null}
+                        {tab === "growth" ? <GrowthPanel /> : null}
+                        {tab === "doses" ? <DosePanel /> : null}
+                        {tab === "fluids" ? <FluidsPanel /> : null}
+                        {tab === "log" ? <LogPanel /> : null}
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="mt-10 max-w-3xl text-xs leading-relaxed text-subtle">
+                    Educational reference only — not a prescribing chart. Verify every dose,
+                    dilution, and indication against your unit protocol and a supervising clinician.
+                    Patient entries stay on this device.
+                  </p>
+                </main>
+              </div>
+            );
+          }
+
+          createRoot(document.getElementById("root")!).render(<OfflineApp />);
+          EOF
+
+          cat > vite.offline.config.ts <<'EOF'
+          import { resolve } from "node:path";
+          import { defineConfig } from "vite";
+          import react from "@vitejs/plugin-react";
+          import tailwindcss from "@tailwindcss/vite";
+
+          export default defineConfig({
+            plugins: [tailwindcss(), react()],
+            resolve: {
+              alias: {
+                "@": resolve(process.cwd(), "src"),
+              },
+            },
+            build: {
+              outDir: "dist-offline",
+              emptyOutDir: true,
+            },
+          });
+          EOF
+
+      - name: Install project dependencies
+        working-directory: project
+        run: npm install --no-audit --no-fund
+
+      - name: Build offline web application
+        working-directory: project
+        run: npx vite build --config vite.offline.config.ts
+
+      - name: Install Capacitor
         working-directory: project
         run: |
-          npm run build:dev
+          npm install @capacitor/core@^7 @capacitor/android@^7 --no-audit --no-fund
+          npm install --save-dev @capacitor/cli@^7 --no-audit --no-fund
 
-      - name: Save build output for inspection
-        if: always()
+      - name: Configure Android application
+        working-directory: project
+        run: |
+          npx cap init PediaRef com.suaito.pediaref --web-dir dist-offline
+          npx cap add android
+          npx cap sync android
+
+      - name: Build Android APK
+        working-directory: project/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PediaRef-Build-Output
-          path: |
-            project/dist/
-            project/.output/
-            project/.vercel/output/
-          if-no-files-found: warn
-          retention-days: 7
+          name: PediaRef-Offline-APK
+          path: project/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
