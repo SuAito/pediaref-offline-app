@@ -245,9 +245,13 @@ jobs:
           res = Path("android/app/src/main/res")
 
           if not source.exists():
-              raise SystemExit(f"Icon not found: {source}")
+              raise SystemExit(
+                  f"ERROR: Icon image not found: {source}"
+              )
 
+          # Crop the logo symbol and exclude the PediaRef wordmark.
           img = Image.open(source).convert("RGBA")
+          mark = img.crop((250, 130, 790, 670))
 
           sizes = {
               "mdpi": 48,
@@ -261,7 +265,7 @@ jobs:
               folder = res / f"mipmap-{density}"
               folder.mkdir(parents=True, exist_ok=True)
 
-              icon = img.resize(
+              icon = mark.resize(
                   (size, size),
                   Image.Resampling.LANCZOS
               )
@@ -269,29 +273,46 @@ jobs:
               icon.save(folder / "ic_launcher.png")
               icon.save(folder / "ic_launcher_round.png")
 
-              foreground_size = round(size * 2.25)
-              foreground = img.resize(
-                  (foreground_size, foreground_size),
+              # Create a centered adaptive foreground.
+              canvas_size = round(size * 2.25)
+              foreground = Image.new(
+                  "RGBA",
+                  (canvas_size, canvas_size),
+                  (255, 255, 255, 0)
+              )
+
+              symbol_size = round(canvas_size * 0.60)
+              symbol = mark.resize(
+                  (symbol_size, symbol_size),
                   Image.Resampling.LANCZOS
               )
-              foreground.save(folder / "ic_launcher_foreground.png")
+
+              offset = (canvas_size - symbol_size) // 2
+              foreground.alpha_composite(
+                  symbol,
+                  (offset, offset)
+              )
+
+              foreground.save(
+                  folder / "ic_launcher_foreground.png"
+              )
 
           adaptive = res / "mipmap-anydpi-v26"
           adaptive.mkdir(parents=True, exist_ok=True)
 
-          xml = '''<?xml version="1.0" encoding="utf-8"?>
+          xml = """<?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@android:color/white"/>
               <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
           </adaptive-icon>
-          '''
+          """
 
           (adaptive / "ic_launcher.xml").write_text(xml)
           (adaptive / "ic_launcher_round.xml").write_text(xml)
 
-          print("PediaRef light launcher icons generated.")
+          print("PediaRef launcher icons generated successfully.")
           PY
-          
+    
       - name: Build Android APK
         working-directory: project/android
         run: |
