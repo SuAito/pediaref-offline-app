@@ -291,6 +291,7 @@ jobs:
                   (size, size),
                   Image.Resampling.LANCZOS
               )
+              
       - name: Apply PediaRef Light Android Icon
         working-directory: project
         run: |
@@ -306,12 +307,26 @@ jobs:
           if not source.exists():
               raise SystemExit(f"Icon not found: {source}")
 
-          # Use the complete, prepared icon. Do not crop it again.
           original = Image.open(source).convert("RGBA")
-          icon = original.resize(
+
+          # Prepare a square icon canvas.
+          original.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+
+          canvas = Image.new(
+              "RGBA",
               (1024, 1024),
-              Image.Resampling.LANCZOS
+              (235, 246, 255, 255)
           )
+
+          # Preserve the complete artwork and its outer edges.
+          # Add safe margins to prevent launcher-mask cropping.
+          artwork = original.copy()
+          artwork.thumbnail((820, 820), Image.Resampling.LANCZOS)
+
+          x = (1024 - artwork.width) // 2
+          y = (1024 - artwork.height) // 2
+
+          canvas.alpha_composite(artwork, (x, y))
 
           sizes = {
               "mdpi": 48,
@@ -325,7 +340,7 @@ jobs:
               folder = res / f"mipmap-{density}"
               folder.mkdir(parents=True, exist_ok=True)
 
-              resized = icon.resize(
+              resized = canvas.resize(
                   (size, size),
                   Image.Resampling.LANCZOS
               )
@@ -333,22 +348,30 @@ jobs:
               resized.save(folder / "ic_launcher.png")
               resized.save(folder / "ic_launcher_round.png")
 
-          # Generate adaptive foreground resources without recropping.
-          foreground = icon.resize(
-              (432, 432),
-              Image.Resampling.LANCZOS
-          )
+              # Keep the entire artwork within the adaptive safe zone.
+              fg_canvas = Image.new(
+                  "RGBA",
+                  (432, 432),
+                  (0, 0, 0, 0)
+              )
 
-          for density in sizes:
-              folder = res / f"mipmap-{density}"
-              foreground.save(folder / "ic_launcher_foreground.png")
+              fg = canvas.resize(
+                  (350, 350),
+                  Image.Resampling.LANCZOS
+              )
+
+              fg_canvas.alpha_composite(fg, (41, 41))
+
+              fg_canvas.save(
+                  folder / "ic_launcher_foreground.png"
+              )
 
           adaptive = res / "mipmap-anydpi-v26"
           adaptive.mkdir(parents=True, exist_ok=True)
 
           xml = """<?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@android:color/white"/>
+              <background android:drawable="@color/pediaref_icon_background"/>
               <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
           </adaptive-icon>
           """
@@ -356,7 +379,18 @@ jobs:
           (adaptive / "ic_launcher.xml").write_text(xml)
           (adaptive / "ic_launcher_round.xml").write_text(xml)
 
-          print("PediaRef icon installed without cropping.")
+          colors = res / "values"
+          colors.mkdir(parents=True, exist_ok=True)
+
+          color_xml = """<?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="pediaref_icon_background">#EBF6FF</color>
+          </resources>
+          """
+
+          (colors / "pediaref_icon_colors.xml").write_text(color_xml)
+
+          print("PediaRef icon updated with safe margins and visible edges.")
           PY
     
       - name: Build Android APK
