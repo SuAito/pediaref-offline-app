@@ -356,11 +356,11 @@ jobs:
               )
 
               fg = canvas.resize(
-                  (350, 350),
-                  Image.Resampling.LANCZOS
+              (342, 342),
+              Image.Resampling.LANCZOS
               )
 
-              fg_canvas.alpha_composite(fg, (41, 41))
+              fg_canvas.alpha_composite(fg, (45, 45))
 
               fg_canvas.save(
                   folder / "ic_launcher_foreground.png"
