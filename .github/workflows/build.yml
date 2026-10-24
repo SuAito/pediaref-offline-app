@@ -249,10 +249,32 @@ jobs:
                   f"ERROR: Icon image not found: {source}"
               )
 
-          # Crop the logo symbol and exclude the PediaRef wordmark.
-          img = Image.open(source).convert("RGBA")
-          mark = img.crop((250, 130, 790, 670))
+          original = Image.open(source).convert("RGBA")
 
+          # Crop the complete PediaRef symbol.
+          # Exclude the PediaRef wordmark below it.
+          symbol = original.crop((180, 35, 845, 700))
+
+          # Create a square light-background icon with balanced padding.
+          canvas_size = 1024
+          icon_canvas = Image.new(
+              "RGBA",
+              (canvas_size, canvas_size),
+              (255, 255, 255, 255)
+          )
+
+          symbol_size = 860
+          symbol.thumbnail(
+              (symbol_size, symbol_size),
+              Image.Resampling.LANCZOS
+          )
+
+          x = (canvas_size - symbol.width) // 2
+          y = (canvas_size - symbol.height) // 2
+
+          icon_canvas.alpha_composite(symbol, (x, y))
+
+          # Generate standard Android launcher icons.
           sizes = {
               "mdpi": 48,
               "hdpi": 72,
@@ -265,7 +287,7 @@ jobs:
               folder = res / f"mipmap-{density}"
               folder.mkdir(parents=True, exist_ok=True)
 
-              icon = mark.resize(
+              icon = icon_canvas.resize(
                   (size, size),
                   Image.Resampling.LANCZOS
               )
@@ -273,30 +295,29 @@ jobs:
               icon.save(folder / "ic_launcher.png")
               icon.save(folder / "ic_launcher_round.png")
 
-              # Create a centered adaptive foreground.
-              canvas_size = round(size * 2.25)
+              # Adaptive foreground with extra safe space
+              # so Android launchers do not crop the symbol.
+              foreground_size = 432
               foreground = Image.new(
                   "RGBA",
-                  (canvas_size, canvas_size),
-                  (255, 255, 255, 0)
+                  (foreground_size, foreground_size),
+                  (0, 0, 0, 0)
               )
 
-              symbol_size = round(canvas_size * 0.60)
-              symbol = mark.resize(
-                  (symbol_size, symbol_size),
+              inner_size = round(foreground_size * 0.76)
+              inner = icon_canvas.resize(
+                  (inner_size, inner_size),
                   Image.Resampling.LANCZOS
               )
 
-              offset = (canvas_size - symbol_size) // 2
-              foreground.alpha_composite(
-                  symbol,
-                  (offset, offset)
-              )
+              offset = (foreground_size - inner_size) // 2
+              foreground.alpha_composite(inner, (offset, offset))
 
               foreground.save(
                   folder / "ic_launcher_foreground.png"
               )
 
+          # Adaptive icon configuration
           adaptive = res / "mipmap-anydpi-v26"
           adaptive.mkdir(parents=True, exist_ok=True)
 
@@ -310,7 +331,7 @@ jobs:
           (adaptive / "ic_launcher.xml").write_text(xml)
           (adaptive / "ic_launcher_round.xml").write_text(xml)
 
-          print("PediaRef launcher icons generated successfully.")
+          print("PediaRef icons generated with corrected crop and padding.")
           PY
     
       - name: Build Android APK
