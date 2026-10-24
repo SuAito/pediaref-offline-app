@@ -173,11 +173,16 @@ jobs:
                     </div>
                   </div>
 
-                  <p className="mt-10 max-w-3xl text-xs leading-relaxed text-subtle">
-                    Educational reference only — not a prescribing chart. Verify every dose,
-                    dilution, and indication against your unit protocol and a supervising clinician.
-                    Patient entries stay on this device.
-                  </p>
+               <div className="mt-10 max-w-3xl">
+                 <p className="mb-2 text-center text-xs font-medium text-muted">
+                  Made With Love By: Dr. SULAIMAN ALMAJEEDI
+                 </p>
+                 <p className="text-xs leading-relaxed text-subtle">
+                 Educational reference only — not a prescribing chart. Verify every dose,
+                 dilution, and indication against your unit protocol and a supervising clinician.
+                 Patient entries stay on this device.
+                </p>
+              </div>
                 </main>
               </div>
             );
